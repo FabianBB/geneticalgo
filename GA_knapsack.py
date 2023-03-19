@@ -11,7 +11,7 @@ POP_SIZE = 100  # todo experiment
 N_ITEMS = 10
 MAX_ITEM_VALUE = 10
 WEIGHT_LIMIT = 50  # todo experiment
-KNAPSACK = True
+KNAPSACK = False
 
 # --- KNAPSACK functions start ---
 
@@ -113,10 +113,7 @@ def fitnessTSP(c):
         val += problem[c[i]][c[i + 1]]
     # in my thesis TSP is a cycle so here I add the distance from last index to first
     val += problem[c[-1]][c[0]]
-    if val < 1:
-        print("Below 1 fitness score for: ")
-        print(c)
-    return val
+    return 1 / val
 
 
 # # select N/2 parents using proportional selection
@@ -146,9 +143,9 @@ def fitnessTSP(c):
 # TODO this selection works based on maximizing a fitness function
 #  because the bigger the fitness function the bigger the probaility of picking
 def selectParents(population, fitFunc):
-    totalf = sum([fitFunc(c) for c in population])
-    selection_probs = [fitFunc(c) / totalf for c in population]
-
+    totalf = np.sum([fitFunc(c) for c in population])
+    selection_probs = [(fitFunc(c) / totalf) for c in population]
+    # print(selection_probs)
     idx = npr.choice(len(population), p=selection_probs, replace=False, size=max(50, int(len(population) / 2)))
     return [population[i] for i in idx]
 
@@ -165,28 +162,57 @@ def mutate(c):
     return c
 
 
-def cx2(p1, p2):
-    # TODO error in TSP crossover function?
-    o1 = []
-    o2 = []
+# midway split crossover
+def halfhalf(p1, p2):
 
-    # select first bit from other parent
-    o1.append(p2[0])
-    o2.append(p1[0])
+    o1 = p1[0:len(p1) // 2]
+    o2 = p2[0:len(p2) // 2]
 
-    while len(o1) < len(p1):
-        # find index of last bit in o1 in p1
-        index = np.where(p1 == o1[-1])
+    for val in p2:
 
-        # add bit at index in p2 to o1
-        o1.append(p2[index][0])
-    print(o1) if DEBUG else None
+        if not val in o1:
+            o1 = np.concatenate((o1, [val]))
 
-    while len(o2) < len(p2):
-        index = np.where(p2 == o2[-1])
+    for val in p1:
+        if not val in o2:
+            o2 = np.concatenate((o2, [val]))
 
-        o2.append(p1[index][0])
-    print(o2) if DEBUG else None
+    return o1, o2
+
+# order crossover by Davis
+# Davis L. Applying adaptive algorithms to epistatic domains. IJCAI. 1985;85:162–164. [Google Scholar]
+def ox(p1, p2):
+    # initiliaze offspring as lists filled with -1
+    o1 = [-1] * len(p1)
+    o2 = [-1] * len(p2)
+
+    # select random start and end indices
+    start = np.random.randint(0, len(p1))
+    end = np.random.randint(0, len(p1))
+
+    # make sure start is smaller than end
+    if start > end:
+        start, end = end, start
+
+    # copy the selected part of the parents to the offspring
+    o1[start:end] = p1[start:end]
+    o2[start:end] = p2[start:end]
+
+    # fill the rest of the offspring with the remaining values from the parents
+    # check for duplicates
+    for i in range(len(p1)):
+        if not p1[i] in o1:
+            for j in range(len(o1)):
+                if o1[j] == -1:
+                    o1[j] = p1[i]
+                    break
+
+    for i in range(len(p2)):
+        if not p2[i] in o2:
+            for j in range(len(o2)):
+                if o2[j] == -1:
+                    o2[j] = p2[i]
+                    break
 
     return o1, o2
 
@@ -286,6 +312,6 @@ if KNAPSACK:
 else:
     pop = createPop(100)
     # TODO attention: need to change fitness function approach to maximizing for TSP
-    best = GA(pop, cx2, mutate, fitnessTSP, maxFit=100000, cxProb=1, mutProb=0.05)
+    best = GA(pop, ox, mutate, fitnessTSP, maxFit=100000, cxProb=1, mutProb=0.05)
     print("best: ", best)
     print(fitnessTSP(best))

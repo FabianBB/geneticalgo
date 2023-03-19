@@ -48,7 +48,7 @@ def fitness(c):
         val += problem[c[i]][c[i + 1]]
     # in my thesis TSP is a cycle so here I add the distance from last index to first
     val += problem[c[-1]][c[0]]
-    return val
+    return 1/val
 
 
 # # select N/2 parents using proportional selection
@@ -76,9 +76,9 @@ def fitness(c):
 # function above didnt work quite well so i slightly modified this one
 # from https://stackoverflow.com/questions/10324015/fitness-proportionate-selection-roulette-wheel-selection-in-python
 def selectParents(population):
-    totalf = sum([fitness(c) for c in population])
-    selection_probs = [fitness(c) / totalf for c in population]
-
+    totalf = np.sum([fitness(c) for c in population])
+    selection_probs = [(fitness(c) / totalf) for c in population]
+    #print(selection_probs)
     idx = npr.choice(len(population), p=selection_probs, replace=False, size=max(50, int(len(population) / 2)))
     return [population[i] for i in idx]
 
@@ -97,28 +97,46 @@ def mutate(c):
 
 
 def cx2(p1, p2):
-    o1 = []
-    o2 = []
+    # o1 = []
+    # o2 = []
+    #
+    # # select first bit from other parent
+    # o1.append(p2[0])
+    # o2.append(p1[0])
+    #
+    # while len(o1) < len(p1):
+    #     # find index of last bit in o1 in p1
+    #     index = np.where(p1 == o1[-1])
+    #
+    #     # add bit at index in p2 to o1
+    #     o1.append(p2[index])
+    #     print(o1) if DEBUG else None
+    #
+    # while len(o2) < len(p2):
+    #     index = np.where(p2 == o2[-1])
+    #
+    #     o2.append(p1[index])
+    #     print(o2) if DEBUG else None
+    #
+    # return p1, p2
 
-    # select first bit from other parent
-    o1.append(p2[0])
-    o2.append(p1[0])
+    # take first half from p1 and second half from p2
+    # o1 = np.concatenate((p1[:int(len(p1) / 2)], p2[int(len(p2) / 2):]))
+    # o2 = np.concatenate((p2[:int(len(p2) / 2)], p1[int(len(p1) / 2):]))
 
-    while len(o1) < len(p1):
-        # find index of last bit in o1 in p1
-        index = np.where(p1 == o1[-1])
+    o1 = p1[0:len(p1) // 2]
+    o2 = p2[0:len(p2) // 2]
 
-        # add bit at index in p2 to o1
-        o1.append(p2[index])
-        print(o1) if DEBUG else None
+    for val in p2:
 
-    while len(o2) < len(p2):
-        index = np.where(p2 == o2[-1])
+        if not val in o1:
+            o1 = np.concatenate((o1, [val]))
 
-        o2.append(p1[index])
-        print(o2) if DEBUG else None
+    for val in p1:
+        if not val in o2:
+            o2 = np.concatenate((o2, [val]))
 
-    return p1, p2
+    return o1, o2
 
 
 # genetic algo
@@ -152,10 +170,12 @@ def GA(pop, ngen):
         # keep track of minimum fitness
         if min([fitness(c) for c in pop]) < minF:
             minF = min([fitness(c) for c in pop])
+            maxF = max([fitness(c) for c in pop])
             print("New min: ", minF)
 
     #print minF
     print("Min fitness: ", minF)
+    print("Min fitness: ", maxF)
     # find best chromosome
     best = pop[0]
     for c in pop:
