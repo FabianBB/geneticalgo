@@ -4,13 +4,13 @@ from time import sleep
 import numpy.random as npr
 import matplotlib.pyplot as plt
 
-DEBUG = True
+DEBUG = False
 
-N_GEN = 500  # todo experiment
-POP_SIZE = 100  # todo experiment
+N_GEN = 2000
+POP_SIZE = 100  # todo experiment 100, 200, 300
 N_ITEMS = 10
 MAX_ITEM_VALUE = 10
-WEIGHT_LIMIT = 50  # todo experiment
+WEIGHT_LIMIT = 50  # todo experiment 40 50 60 or 50 60 70
 KNAPSACK = False
 
 # --- KNAPSACK functions start ---
@@ -59,6 +59,11 @@ def onePointCx(p1, p2):
     o2 = p2[:(N_ITEMS // 2)] + p1[(N_ITEMS // 2):]
     return o1, o2
 
+def twoPointCx(p1, p2):
+    # only for length 10 for now
+    o1 = p1[:3] + p2[3:6] + p1[6:]
+    o2 = p2[:3] + p1[3:6] + p2[6:]
+    return o1, o2
 
 # do simple mutation by deciding to include or exclude one random item by flipping their inclusion bit
 def mutateKnapsack(ind):
@@ -86,26 +91,22 @@ def createMat(points):
             mat[i][j] = np.linalg.norm(points[i] - points[j])
     return mat
 
-
-if not KNAPSACK:
-    problem = createMat(generatePoints(10))
-
 # Genetic Algo
 
-# todo small error in comment: n = 10 in generate points, but n here is how many individuals (permutations) in population
-# create a population of n chromosomes, the chromosome being a list of n indices representing the cities generated
+# create a population of size POP_SIZE chromosomes, the chromosome being a list of n indices representing the cities generated
 # by generatePoints
-def createPop(n):
+def createPop(problem):
     pop = []
 
     # generate permutations of the indices
-    for i in range(n):
+    for i in range(POP_SIZE):
         pop.append(np.random.permutation(len(problem)))
 
     return pop
 
 
-# fitness function for TSP is just thee total distance of the path
+# fitness function for TSP is just the inverse of total distance of the path
+# to be able to maximize it
 def fitnessTSP(c):
     val = 0
     # make sure to not go out of bounds
@@ -140,8 +141,6 @@ def fitnessTSP(c):
 
 # function above didnt work quite well so i slightly modified this one
 # from https://stackoverflow.com/questions/10324015/fitness-proportionate-selection-roulette-wheel-selection-in-python
-# TODO this selection works based on maximizing a fitness function
-#  because the bigger the fitness function the bigger the probaility of picking
 def selectParents(population, fitFunc):
     totalf = np.sum([fitFunc(c) for c in population])
     selection_probs = [(fitFunc(c) / totalf) for c in population]
@@ -218,16 +217,28 @@ def ox(p1, p2):
 
 
 # genetic algo
-# todo should we maximize fitness for both problems? easier to calculate probabilities?
-# TODO add elitism
-def GA(pop, cxFunc, mutFunc, fitFunc, maxFit, cxProb, mutProb):
+# fixed set is fixed problem initialization (e.g. item collection, cities)
+# popGeneration initalizes the population based on that
+def GA(fixedSet, popGeneration, cxFunc, mutFunc, fitFunc, maxFit, cxProb, mutProb, kElitist):
 
-    # TODO generate population here
-    avgFitnessPerGen = []
+    pop = popGeneration(fixedSet)
+
+    maxFitnessPerGen = []
 
     for i in range(N_GEN):
-        # select parents
+        # elitism with sorting like this takes too long, would need a better implementation
+        # elitism: retain k best individuals (the elite) to carry over into next gen
+        # if kElitist > 0:
+        #     sorted_pop = sorted(pop, key=lambda ind: fitFunc(ind), reverse=True)
+        #     elite = sorted_pop[:kElitist]
+        # else:
+        #     sorted_pop = pop
+        #     elite = []
 
+        # select parents for mating without elite
+        # parents = selectParents(sorted_pop[kElitist:], fitFunc)
+
+        # select parents for mating
         parents = selectParents(pop, fitFunc)
 
         # create offspring
@@ -248,6 +259,9 @@ def GA(pop, cxFunc, mutFunc, fitFunc, maxFit, cxProb, mutProb):
             offspring.append(o1)
             offspring.append(o2)
 
+        # replace old population with offspring + saved elite
+        # pop = offspring + elite
+
         # replace old population with offspring
         pop = offspring
         # duplicate every chromosome in population
@@ -256,35 +270,20 @@ def GA(pop, cxFunc, mutFunc, fitFunc, maxFit, cxProb, mutProb):
         print(pop) if DEBUG else None
         # print average fitness of population
         avgFit = sum([fitFunc(c) for c in pop]) / len(pop)
-        avgFitnessPerGen.append(avgFit)
         if DEBUG:
             print("Average fitness: ", avgFit)
 
-        # todo best fitness for knapsack is max but best for tsp is min, need arg for that
-
-        # keep track of minimum fitness
-        # if min([fitFunc(c) for c in pop]) < minF:
-        #     minF = min([fitFunc(c) for c in pop])
-        #     print("New min: ", minF)
-
         # keep track of maximum fitness
         maxOfPop = max([fitFunc(c) for c in pop])
+        maxFitnessPerGen.append(maxOfPop)
         if maxOfPop > maxFit:
             maxFit = maxOfPop
             print("New max: ", maxFit)
 
-    # final min fitness
-    # print("Min fitness: ", minF)
-    # # find best chromosome
-    # best = pop[0]
-    # for c in pop:
-    #     if fitFunc(c) < fitFunc(best):
-    #         best = c
-
-    plt.plot(avgFitnessPerGen)
-    plt.ylabel('Avg. fitness score')
-    plt.xlabel('Generation')
-    plt.show()
+    # plt.plot(maxFitnessPerGen, color='b', label='max. fitness')
+    # plt.ylabel('Max fitness of population')
+    # plt.xlabel('Generation')
+    # plt.show()
 
     print("Max fitness: ", maxFit)
     # find best chromosome
@@ -293,25 +292,139 @@ def GA(pop, cxFunc, mutFunc, fitFunc, maxFit, cxProb, mutProb):
         if fitFunc(c) > fitFunc(best):
             best = c
 
-    return best
+    return best, maxFitnessPerGen
 
+def plotAvgOfExperiments(listOfExpResults, name):
+    n_exp = len(listOfExpResults)
+    avg_results = []
+    # for each generation
+    for i in range(N_GEN):
+        # get the average of all experiments' max fitness
+        sum = 0
+        for j in range(n_exp):
+            sum += listOfExpResults[j][i]
+        avg_results.append(sum / n_exp)
+    # plot
+    plt.title("Avg. results of 10 exp-s")
+    plt.plot(avg_results)
+    plt.ylabel('Max fitness')
+    plt.xlabel('Generation')
+    plt.show()
+    plt.savefig(fname=name)
+    return avg_results
+
+
+def plotFour(list1, list2, list3, list4):
+    # plot three in same
+    plt.title("mutation probability comparison")
+    plt.plot(list1, color='r', label="max_w=40")
+    plt.plot(list2, color='g', label="max_w=50")
+    plt.plot(list3, color='b', label="max_w=60")
+    # plt.plot(list4, color='y', label="max_w=60")
+    plt.ylabel('Max fitness')
+    plt.xlabel('Generation')
+    plt.show()
+    plt.savefig(fname="1p_vs_ox_comp.png")
+    return
 
 # run GA
 
+items = generateItems()
+print(items)
+
 if KNAPSACK:
-    items = generateItems()
-    if DEBUG:
-        print("items:")
-        print(items)
-    pop = createPopKnapsack(items)
-    best = GA(pop, cxFunc=onePointCx, mutFunc=mutateKnapsack, fitFunc=fitnessKnapsack,
-              maxFit=0, cxProb=0.6, mutProb=0.05)
-    # todo in nature: cx rate: 0.4 to 0.6, mut rate: 0.01 to 0.02
+    # use one problem set for parameter experiment
+    exps = []
+    # run 10 experiments for configuration
+    POP_SIZE = 100
+    cxProb = 0.5
+    mutProb = 0.025
+    print("Experiment one-point crossover:")
+    print("pop_size=" + str(POP_SIZE) + "|cx_prob=" + str(cxProb) + "|mut_prob=" + str(mutProb))
+    for i in range(10):
+        best, generations = GA(items, createPopKnapsack, cxFunc=onePointCx, mutFunc=mutateKnapsack, fitFunc=fitnessKnapsack,
+                    maxFit=0, cxProb=cxProb, mutProb=mutProb, kElitist=0)
+        exps.append(generations)
     print("best: ", best)
     print(fitnessKnapsack(best))
+    plot_name = "ONEPOINT|pop_size=" + str(POP_SIZE) + "|cx_prob=" + str(cxProb) + "|mut_prob=" + str(mutProb) + ".jpeg"
+    cx1 = plotAvgOfExperiments(exps, name=plot_name)
+
+    # POP_SIZE = 200
+    # cxProb = 0.5
+    mutProb = 0.05
+    print("Experiment one-point crossover:")
+    print("pop_size=" + str(POP_SIZE) + "|cx_prob=" + str(cxProb) + "|mut_prob=" + str(mutProb))
+    for i in range(10):
+        best, generations = GA(items, createPopKnapsack, cxFunc=onePointCx, mutFunc=mutateKnapsack,
+                               fitFunc=fitnessKnapsack,
+                               maxFit=0, cxProb=cxProb, mutProb=mutProb, kElitist=0)
+        exps.append(generations)
+    print("best: ", best)
+    print(fitnessKnapsack(best))
+    plot_name = "ONEPOINT|pop_size=" + str(POP_SIZE) + "|cx_prob=" + str(cxProb) + "|mut_prob=" + str(mutProb) + ".jpeg"
+    cx2 = plotAvgOfExperiments(exps, name=plot_name)
+
+    # POP_SIZE = 300
+    # cxProb = 0.5
+    mutProb = 0.075
+    print("Experiment one-point crossover:")
+    print("pop_size=" + str(POP_SIZE) + "|cx_prob=" + str(cxProb) + "|mut_prob=" + str(mutProb))
+    for i in range(10):
+        best, generations = GA(items, createPopKnapsack, cxFunc=onePointCx, mutFunc=mutateKnapsack,
+                               fitFunc=fitnessKnapsack,
+                               maxFit=0, cxProb=cxProb, mutProb=mutProb, kElitist=0)
+        exps.append(generations)
+    print("best: ", best)
+    print(fitnessKnapsack(best))
+    plot_name = "ONEPOINT|pop_size=" + str(POP_SIZE) + "|cx_prob=" + str(cxProb) + "|mut_prob=" + str(mutProb) + ".png"
+    cx3 = plotAvgOfExperiments(exps, name=plot_name)
+
+    plotFour(cx1, cx2, cx3, [])
+
 else:
-    pop = createPop(100)
-    # TODO attention: need to change fitness function approach to maximizing for TSP
-    best = GA(pop, ox, mutate, fitnessTSP, maxFit=100000, cxProb=1, mutProb=0.05)
+    problem = createMat(generatePoints(10))
+    exps = []
+
+    POP_SIZE = 100
+    cxProb = 0.5
+    mutProb = 0.025
+    for i in range(10):
+        best, generations = GA(problem, createPop, ox, mutate, fitnessTSP, maxFit=0, cxProb=cxProb, mutProb=mutProb, kElitist=0)
+        exps.append(generations)
+    print("best: ", best)
+    print(fitnessKnapsack(best))
+    plot_name = "TSP|pop_size=" + str(POP_SIZE) + "|cx_prob=" + str(cxProb) + "|mut_prob=" + str(mutProb) + ".png"
+    cx1 = plotAvgOfExperiments(exps, name=plot_name)
     print("best: ", best)
     print(fitnessTSP(best))
+
+    POP_SIZE = 200
+    # cxProb = 0.7
+    # mutProb = 0.025
+    for i in range(10):
+        best, generations = GA(problem, createPop, ox, mutate, fitnessTSP, maxFit=0, cxProb=cxProb, mutProb=mutProb,
+                               kElitist=0)
+        exps.append(generations)
+    print("best: ", best)
+    print(fitnessKnapsack(best))
+    plot_name = "TSP|pop_size=" + str(POP_SIZE) + "|cx_prob=" + str(cxProb) + "|mut_prob=" + str(mutProb) + ".png"
+    cx2 = plotAvgOfExperiments(exps, name=plot_name)
+    print("best: ", best)
+    print(fitnessTSP(best))
+
+    POP_SIZE = 300
+    # cxProb = 0.9
+    # mutProb = 0.025
+    for i in range(10):
+        best, generations = GA(problem, createPop, ox, mutate, fitnessTSP, maxFit=0, cxProb=cxProb, mutProb=mutProb,
+                               kElitist=0)
+        exps.append(generations)
+    print("best: ", best)
+    print(fitnessKnapsack(best))
+    plot_name = "TSP|pop_size=" + str(POP_SIZE) + "|cx_prob=" + str(cxProb) + "|mut_prob=" + str(mutProb) + ".png"
+    cx3 = plotAvgOfExperiments(exps, name=plot_name)
+    print("best: ", best)
+    print(fitnessTSP(best))
+
+    plotFour(cx1, cx2, cx3, [])
